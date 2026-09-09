@@ -1,0 +1,5 @@
+{
+  "mode": "groups",
+  "allowed_group_ids": [1144],
+  "core_url_bases": ["https://ext-node.qortal.link"]
+}

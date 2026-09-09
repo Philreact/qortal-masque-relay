@@ -1,0 +1,36 @@
+name: qortal-masque-relay
+
+services:
+  relay:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    network_mode: host
+    command:
+      - --listen
+      - 0.0.0.0:${QORTAL_MASQUE_RELAY_PORT:-47322}
+      - --public-address
+      - ${QORTAL_MASQUE_PUBLIC_ADDRESS:-}
+      - --upnp=${QORTAL_MASQUE_UPNP:-true}
+      - --server-name
+      - ${QORTAL_MASQUE_SERVER_NAME:-qortal-masque-relay}
+      - --state-dir
+      - /data/relay
+      - --rns-config
+      - /data/reticulum
+      - --access-config
+      - /config/relay-access.json
+      - --max-sessions
+      - ${QORTAL_MASQUE_MAX_SESSIONS:-256}
+      - --allow-target
+      - ${QORTAL_MASQUE_ALLOWED_TARGETS:-}
+    volumes:
+      - ./relay-access.json:/config/relay-access.json:ro
+      - relay-data:/data/relay
+      - reticulum-data:/data/reticulum
+      - ${QORTAL_MASQUE_RNS_CONFIG:-./reticulum.conf}:/data/reticulum/config:ro
+
+volumes:
+  relay-data:
+  reticulum-data:

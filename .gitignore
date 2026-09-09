@@ -1,0 +1,6 @@
+/relay-data/
+/reticulum-data/
+/qortal-masque-relay
+/.env
+__pycache__/
+*.py[cod]
