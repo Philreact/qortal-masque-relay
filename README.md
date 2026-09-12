@@ -373,3 +373,23 @@ python3 -m unittest discover -s scripts -p 'test_masque_discovery_codec.py'
 The cross-project integration test requires `RELAY_TEST_BINARY`,
 `HUB_SIDECAR_TEST_BINARY`, and `HUB_BRIDGE_TEST_PATH`. See
 [ACCESS.md](ACCESS.md#verification).
+
+## Receive buffering and build requirements
+
+Build from the complete repository, including `third_party/`. Go 1.26+ is
+required; the Dockerfile supplies it automatically. The pinned local quic-go and
+masque-go copies contain a small documented receive-buffer patch; their licenses
+and upgrade notes are included alongside the sources.
+
+Authorized tunnels automatically use bounded burst buffering. No setting is
+needed. Pre-authorization queues retain their small packet limits. Receive
+queues share a 32 MiB process-wide allocation budget; each admitted queue allows
+at most 1024 packets / 1 MiB of charged packet data, plus bounded ring storage.
+Packets older than 50 ms are discarded when the queue is next processed, rather
+than delivered late. This is not a whole-process memory limit or a bandwidth
+guarantee. Existing group access and target restrictions still apply.
+
+If receive pressure occurs, logs report aggregate `full`, `budget`, `expired`
+and `rawPacketDrops` counters at most once per 30 seconds. These reports contain
+no account, source IP, ticket or payload data. A stock older relay remains wire
+compatible, but does not gain this buffering improvement until rebuilt.

@@ -54,6 +54,7 @@ type Server struct {
 	activeByAddress map[string]int
 	activeSessions  int
 	closed          bool
+	metricsDone     chan struct{}
 }
 
 type Metadata struct {
@@ -130,6 +131,7 @@ func Start(config Config) (*Server, Metadata, error) {
 		return nil, Metadata{}, err
 	}
 	server := &Server{
+		metricsDone:     make(chan struct{}),
 		tickets:         tickets,
 		udp:             udp,
 		config:          config,
@@ -183,6 +185,12 @@ func Start(config Config) (*Server, Metadata, error) {
 			return
 		}
 		defer egress.Close()
+		// Only admitted, target-validated tunnels receive the larger burst budget.
+		// The process-wide memory cap also includes pre-authorization queues.
+		w.(http3.HTTPStreamer).HTTPStream().EnableDatagramReceiveBuffer()
+		if auth, ok := request.Context().Value(relayAuthContextKey{}).(*connectionAuthorization); ok {
+			auth.conn.EnableDatagramReceiveBuffer()
+		}
 		_ = server.proxy.ProxyConnectedSocket(w, proxyRequest, egress)
 	})
 	server.server = &http3.Server{
@@ -203,6 +211,7 @@ func Start(config Config) (*Server, Metadata, error) {
 		Handler:         mux,
 	}
 	go func() { _ = server.server.Serve(udp) }()
+	go server.logReceivePressure()
 	started = true
 	return server, Metadata{
 		RelayAddress:    public.String(),
@@ -218,6 +227,7 @@ func (s *Server) Close() error {
 		return nil
 	}
 	s.closed = true
+	close(s.metricsDone)
 	s.mu.Unlock()
 	_ = s.proxy.Close()
 	if s.server != nil {
@@ -230,6 +240,26 @@ func (s *Server) Close() error {
 		return s.udp.Close()
 	}
 	return nil
+}
+
+// Aggregate numeric counters only: no tickets, accounts, source IPs or payloads.
+// At most one pressure report per 30 seconds, never a log line per dropped packet.
+func (s *Server) logReceivePressure() {
+	ticker := time.NewTicker(30 * time.Second)
+	defer ticker.Stop()
+	previous := quic.GlobalDatagramReceiveBufferStats()
+	for {
+		select {
+		case <-s.metricsDone:
+			return
+		case <-ticker.C:
+			now := quic.GlobalDatagramReceiveBufferStats()
+			if now.DroppedFull != previous.DroppedFull || now.DroppedBudget != previous.DroppedBudget || now.DroppedExpired != previous.DroppedExpired || now.RawPacketDrops != previous.RawPacketDrops {
+				fmt.Fprintf(os.Stderr, "MASQUE receive pressure: queuedBytes=%d peakBytes=%d full=%d budget=%d expired=%d rawPacketDrops=%d\n", now.QueuedBytes, now.PeakBytes, now.DroppedFull-previous.DroppedFull, now.DroppedBudget-previous.DroppedBudget, now.DroppedExpired-previous.DroppedExpired, now.RawPacketDrops-previous.RawPacketDrops)
+			}
+			previous = now
+		}
+	}
 }
 
 func (s *Server) ActiveSessions() int {
