@@ -95,6 +95,26 @@ The relay does see the connecting IP address, selected UDP target, traffic
 timing, and packet sizes. Read [Security and privacy](#security-and-privacy)
 before operating one.
 
+## Reticulum gateway discovery
+
+The image includes LXMF, which Reticulum needs to validate interface discovery
+announcements. The supplied `reticulum.conf` enables discovery and up to five
+automatic gateway connections, in addition to the configured interfaces. Two
+public bootstrap gateways provide a starting path when the Qortal gateways are
+unavailable. Discovery still needs at least one reachable gateway; it cannot
+discover peers while completely disconnected.
+
+Discovery records persist in `reticulum-data`. If you supply a custom config
+through `QORTAL_MASQUE_RNS_CONFIG`, merge `discover_interfaces = Yes` and
+`autoconnect_discovered_interfaces = 5` into its `[reticulum]` section and retain
+a reachable bootstrap interface. This enables public gateway discovery;
+encrypted community discovery additionally requires that community's
+`network_identity`. No application identity is replaced.
+
+Check actual gateway connectivity with
+`docker compose exec relay rnstatus --config /data/reticulum`.
+An announcement log alone does not establish that any gateway received it.
+
 ## Requirements
 
 - Linux with Docker Engine and Docker Compose v2.

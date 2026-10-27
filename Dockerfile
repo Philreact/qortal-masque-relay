@@ -10,7 +10,7 @@ COPY internal ./internal
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/qortal-masque-relay ./cmd/qortal-masque-relay
 
 FROM python:3.12-slim-bookworm
-RUN pip install --no-cache-dir rns==1.5.2 \
+RUN pip install --no-cache-dir rns==1.5.2 lxmf==0.9.4 \
     && useradd --system --uid 10001 --create-home relay \
     && mkdir -p /data/relay /data/reticulum \
     && chown -R relay:relay /data
@@ -19,6 +19,6 @@ COPY --chmod=0644 scripts/masque_relay_discovery.py /usr/local/lib/qortal/masque
 COPY --chmod=0644 scripts/masque_discovery_codec.py /usr/local/lib/qortal/masque_discovery_codec.py
 RUN chmod 0755 /usr/local/lib/qortal
 USER relay
-RUN PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=/usr/local/lib/qortal python3 -c "import masque_relay_discovery, masque_discovery_codec"
+RUN PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=/usr/local/lib/qortal python3 -c "import LXMF; from LXMF import LXStamper; import masque_relay_discovery, masque_discovery_codec"
 VOLUME ["/data/relay", "/data/reticulum"]
 ENTRYPOINT ["qortal-masque-relay", "--python", "python3", "--discovery-script", "/usr/local/lib/qortal/masque_relay_discovery.py"]
