@@ -363,11 +363,21 @@ or loopback service, add only its exact IP and port as an exception.
 See [ACCESS.md](ACCESS.md) for protocol-level security details and resource
 limits.
 
+## Discovery recovery
+
+Discovery refresh failures (including temporary ticket-authority socket failures)
+retry after 5 seconds with exponential backoff capped at 60 seconds. A successful
+refresh restores the normal 120-second interval. Active relay tunnels continue
+during these retries; restricted access still expires at its original deadline.
+Failed refreshes do not advertise stale ticket metadata. Advertisement-only
+Reticulum destinations are deregistered after sending, including on send failure,
+so repeated refreshes do not accumulate inbound destinations.
+
 ## Development checks
 
 ```bash
 go test -race ./...
-python3 -m unittest discover -s scripts -p 'test_masque_discovery_codec.py'
+python3 -m unittest discover -s scripts -p 'test_masque*.py'
 ```
 
 The cross-project integration test requires `RELAY_TEST_BINARY`,

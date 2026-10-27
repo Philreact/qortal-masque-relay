@@ -19,6 +19,8 @@ APP_NAMESPACE = "qortal-hub-v3"
 ASPECT = "community-masque-relay"
 VERSION = "v1"
 ANNOUNCE_INTERVAL_SECONDS = 120
+ANNOUNCE_RETRY_MIN_SECONDS = 5
+ANNOUNCE_RETRY_MAX_SECONDS = 60
 LEASE_SECONDS = 600
 QUERY_RESPONSE_MIN_INTERVAL_SECONDS = 1
 QUERY_RESPONSE_JITTER_MILLISECONDS = 250
@@ -154,20 +156,33 @@ class RelayDiscovery:
             self.destination.set_link_established_callback(self.ticket_link_established)
             for path in ("/catalog", "/challenge", "/issue"):
                 self.destination.register_request_handler(path, response_generator=self.ticket_handler, allow=RNS.Destination.ALLOW_ALL)
-            # The stable service destination is announced for encrypted RNS Links.
-            self.destination.announce()
         print(
             f"MASQUE relay discovery destination {self.local_hash.hex()}",
             flush=True,
         )
         RNS.Transport.register_announce_handler(self.AnnounceHandler(self))
-        self.announce()
-        print(
-            "MASQUE relay availability announced through Reticulum",
-            flush=True,
-        )
-        while not self.stopped.wait(ANNOUNCE_INTERVAL_SECONDS):
-            self.announce()
+        self.run_announcements()
+
+    def run_announcements(self):
+        # Discovery availability must not determine the lifetime of active QUIC
+        # tunnels. Retry transient RNS/catalog failures without advertising stale
+        # ticket keys or extending previously issued leases.
+        retry_delay = ANNOUNCE_RETRY_MIN_SECONDS
+        announced = False
+        while not self.stopped.is_set():
+            try:
+                self.announce()
+                if not announced:
+                    print("MASQUE relay availability announced through Reticulum", flush=True)
+                    announced = True
+                retry_delay = ANNOUNCE_RETRY_MIN_SECONDS
+                delay = ANNOUNCE_INTERVAL_SECONDS
+            except Exception as exc:
+                delay = retry_delay
+                retry_delay = min(retry_delay * 2, ANNOUNCE_RETRY_MAX_SECONDS)
+                print(f"MASQUE relay discovery refresh failed; retry in {delay}s: {exc}", flush=True)
+            if self.stopped.wait(delay):
+                break
 
     def announce(self):
         if self.destination is None or self.stopped.is_set():
@@ -187,7 +202,14 @@ class RelayDiscovery:
                 ASPECT,
                 VERSION,
             )
-            advertisement_destination.announce(app_data=payload)
+            try:
+                advertisement_destination.announce(app_data=payload)
+            finally:
+                # These destinations only publish self-contained advertisements;
+                # they never accept replies. Queued packets retain their own
+                # destination reference, so removing the inbound registration
+                # does not cancel transmission.
+                RNS.Transport.deregister_destination(advertisement_destination)
         print("MASQUE relay availability lease refreshed", flush=True)
 
     def advertisement_payload(self):
