@@ -17,6 +17,8 @@ RUN pip install --no-cache-dir rns==1.5.2 \
 COPY --from=build /out/qortal-masque-relay /usr/local/bin/qortal-masque-relay
 COPY --chmod=0644 scripts/masque_relay_discovery.py /usr/local/lib/qortal/masque_relay_discovery.py
 COPY --chmod=0644 scripts/masque_discovery_codec.py /usr/local/lib/qortal/masque_discovery_codec.py
+RUN chmod 0755 /usr/local/lib/qortal
 USER relay
+RUN PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=/usr/local/lib/qortal python3 -c "import masque_relay_discovery, masque_discovery_codec"
 VOLUME ["/data/relay", "/data/reticulum"]
 ENTRYPOINT ["qortal-masque-relay", "--python", "python3", "--discovery-script", "/usr/local/lib/qortal/masque_relay_discovery.py"]
